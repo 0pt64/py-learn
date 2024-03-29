@@ -5,6 +5,7 @@ import torchvision
 import numpy as np
 import torch.nn.functional as F
 from torchinfo import summary
+from torch.optim.lr_scheduler import LambdaLR
 
 # 1 设置gpu
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -22,16 +23,16 @@ imgs, labels = next(iter(train_dl))
 print(imgs.shape)
 
 # 4 数据可视化
-plt.figure(figsize=(20, 5))
-for i, img in enumerate(imgs[:20]):
-    # 维度缩减
-    npimg = img.numpy().transpose((1, 2, 0))
-    # 把figure分成2行10列，绘制第i+1个子图
-    plt.subplot(2, 10, i + 1)
-    plt.imshow(npimg, cmap=plt.cm.binary)
-    plt.axis('off')
+# plt.figure(figsize=(20, 5))
+# for i, img in enumerate(imgs[:20]):
+#     # 维度缩减
+#     npimg = img.numpy().transpose((1, 2, 0))
+#     # 把figure分成2行10列，绘制第i+1个子图
+#     plt.subplot(2, 10, i + 1)
+#     plt.imshow(npimg, cmap=plt.cm.binary)
+#     plt.axis('off')
 
-plt.show()
+# plt.show()
 
 # 5 构建cnn
 
@@ -71,9 +72,10 @@ summary(model=model, input_size=(32, 3, 32, 32))
 
 # 设置超参数
 loss_fn = nn.CrossEntropyLoss()  # 创建损失函数
-learn_rate = 1e-2  # 学习率
+learn_rate = 0.2  # 学习率
 opt = torch.optim.SGD(model.parameters(), lr=learn_rate)
-
+lr_lambda = lambda epoch: 1.0 if epoch < 10 else np.exp(0.1 * (10 - epoch))
+scheduler = LambdaLR(opt, lr_lambda, last_epoch=-1)
 
 # 训练循环
 def train(dataloader, model, loss_fn, optimizer):
@@ -103,7 +105,6 @@ def train(dataloader, model, loss_fn, optimizer):
 
     return train_acc, train_loss
 
-
 # 测试函数
 def test(dataloader, model, loss_fn):
     size = len(dataloader.dataset)
@@ -127,13 +128,27 @@ def test(dataloader, model, loss_fn):
 
     return test_acc, test_loss
 
-
 # 训练
 epochs = 10
 train_loss = []
 train_acc = []
 test_loss = []
 test_acc = []
+print(111)
+
+def scheduler_lr(optimizer, scheduler):
+    lr_history = []
+
+    """optimizer的更新在scheduler更新的前面"""
+    for epoch in range(epochs):
+        optimizer.step() # 更新参数
+        lr_history.append(optimizer.param_groups[0]['lr'])
+        # print(optimizer.param_groups[0]['lr'])
+        scheduler.step() # 调整学习率
+    return lr_history
+
+lr_history = scheduler_lr(opt, scheduler)
+print(lr_history)
 
 for epoch in range(epochs):
     model.train()
@@ -150,4 +165,35 @@ for epoch in range(epochs):
     template = ('Epoch:{:2d}, Train_acc:{:.1f}%, Train_loss:{:.3f}, Test_acc:{:.1f}%，Test_loss:{:.3f}')
     print(template.format(epoch + 1, epoch_train_acc * 100, epoch_train_loss, epoch_test_acc * 100, epoch_test_loss))
 
-print("111")
+import matplotlib.pyplot as plt
+# 隐藏警告
+import warnings
+
+warnings.filterwarnings("ignore")               #忽略警告信息
+plt.rcParams['font.sans-serif']    = ['SimHei'] # 用来正常显示中文标签
+plt.rcParams['axes.unicode_minus'] = False      # 用来正常显示负号
+plt.rcParams['figure.dpi']         = 100        #分辨率
+
+epochs_range = range(epochs)
+
+plt.figure(figsize=(12, 3))
+plt.subplot(1, 3, 1)
+
+plt.plot(epochs_range, train_acc, label='Training Accuracy')
+plt.plot(epochs_range, test_acc, label='Test Accuracy')
+plt.legend(loc='lower right')
+plt.title('Training and Validation Accuracy')
+
+plt.subplot(1, 3, 2)
+plt.plot(epochs_range, train_loss, label='Training Loss')
+plt.plot(epochs_range, test_loss, label='Test Loss')
+plt.legend(loc='upper right')
+plt.title('Training and Validation Loss')
+
+plt.subplot(1, 3, 3)
+plt.plot(epochs_range, lr_history, label='Learning Rate')
+plt.legend(loc='upper right')
+plt.title('lr')
+
+plt.show()
+
